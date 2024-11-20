@@ -1,0 +1,195 @@
+import tkinter as tk
+from tkinter import messagebox, ttk
+import mysql.connector
+from mysql.connector import Error
+
+# Database connection function
+def connect_db():
+    try:
+        return mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="Srihari@143",
+            database="village_data"
+        )
+    except Error as e:
+        messagebox.showerror("Error", f"Database connection failed: {e}")
+        return None
+
+# Login Verification
+def verify_login(user_type, village_name, username, password, root):
+    db = connect_db()
+    if not db:
+        return
+    cursor = db.cursor()
+
+    try:
+        if user_type == 'DEO':
+            query = "SELECT * FROM deo WHERE username = %s AND password = %s"
+            cursor.execute(query, (username, password))
+            result = cursor.fetchone()
+            if result:
+                root.open_deo_homepage()  # Open DEO homepage
+            else:
+                messagebox.showerror("Error", "Invalid DEO Credentials")
+        elif user_type == 'Village Official':
+            query = "SELECT * FROM village_officials WHERE village_name = %s AND username = %s AND password = %s"
+            cursor.execute(query, (village_name, username, password))
+            result = cursor.fetchone()
+            if result:
+                root.user_village = village_name  # Store village name
+                root.open_official_homepage()  # Open Village Official homepage
+            else:
+                messagebox.showerror("Error", "Invalid Village Official Credentials")
+    except Error as e:
+        messagebox.showerror("Error", f"Database query failed: {e}")
+    finally:
+        db.close()
+
+# Main Application Class
+# Main Application Class
+class VillageDataInfoHub(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Village Data Info Hub")
+        self.geometry("600x700")
+        self.user_village = None  # Store the logged-in village (if applicable)
+        self.create_login_page()
+
+
+    def create_login_page(self):
+        self.clear_window()
+
+        login_frame = tk.Frame(self)
+        login_frame.pack(fill="both", expand=True)
+
+        tk.Label(login_frame, text="Select User Type:").pack(pady=5)
+        user_type = ttk.Combobox(login_frame, values=["DEO", "Village Official"])
+        user_type.pack(pady=5)
+
+        self.village_dropdown = ttk.Combobox(login_frame, values=[])
+        self.village_dropdown.pack(pady=5)
+        self.village_dropdown.set("Select Village")
+        self.village_dropdown.pack_forget()
+
+        user_type.bind("<<ComboboxSelected>>", lambda e: self.on_user_type_select(user_type.get(), login_frame))
+
+        tk.Label(login_frame, text="Username:").pack(pady=5)
+        username_entry = tk.Entry(login_frame)
+        username_entry.pack(pady=5)
+
+        tk.Label(login_frame, text="Password:").pack(pady=5)
+        password_entry = tk.Entry(login_frame, show="*")
+        password_entry.pack(pady=5)
+
+        login_button = tk.Button(
+            login_frame,
+            text="Login",
+            command=lambda: verify_login(
+                user_type.get(), self.village_dropdown.get(), username_entry.get(), password_entry.get(), self
+            )
+        )
+        login_button.pack(pady=20)
+
+    def on_user_type_select(self, user_type, login_frame):
+        if user_type == 'Village Official':
+            self.village_dropdown.pack(pady=5)
+            self.village_dropdown['values'] = self.get_villages()
+        else:
+            self.village_dropdown.pack_forget()
+
+    def open_deo_homepage(self):
+        self.clear_window()
+
+        tk.Label(self, text="DEO Homepage", font=("Arial", 20)).pack(pady=20)
+
+        tk.Button(
+            self,
+            text="Create Village Official Login",
+            command=self.create_village_official_login
+        ).pack(pady=10)
+
+    def create_village_official_login(self):
+        self.clear_window()
+
+        tk.Label(self, text="Create Village Official Login", font=("Arial", 16)).pack(pady=10)
+
+        tk.Label(self, text="Select Village:").pack(pady=5)
+        village_dropdown = ttk.Combobox(self, values=self.get_villages())
+        village_dropdown.pack(pady=5)
+
+        tk.Label(self, text="Username:").pack(pady=5)
+        username_entry = tk.Entry(self)
+        username_entry.pack(pady=5)
+
+        tk.Label(self, text="Password:").pack(pady=5)
+        password_entry = tk.Entry(self, show="*")
+        password_entry.pack(pady=5)
+
+        submit_button = tk.Button(
+            self,
+            text="Submit",
+            command=lambda: self.save_village_official(
+                village_dropdown.get(), username_entry.get(), password_entry.get()
+            )
+        )
+        submit_button.pack(pady=20)
+
+        tk.Button(self, text="Back", command=self.open_deo_homepage).pack(pady=10)
+
+    def save_village_official(self, village_name, username, password):
+        if not village_name or not username or not password:
+            messagebox.showerror("Error", "All fields are required!")
+            return
+
+        db = connect_db()
+        if not db:
+            return
+        cursor = db.cursor()
+        try:
+            query = "INSERT INTO village_officials (village_name, username, password) VALUES (%s, %s, %s)"
+            cursor.execute(query, (village_name, username, password))
+            db.commit()
+            messagebox.showinfo("Success", "Village Official Login Created Successfully")
+            self.open_deo_homepage()
+        except Error as e:
+            messagebox.showerror("Error", f"Failed to create login: {e}")
+        finally:
+            db.close()
+
+    def open_official_homepage(self):
+        self.clear_window()
+
+        tk.Label(self, text="Village Official Homepage", font=("Arial", 20)).pack(pady=20)
+
+        action_dropdown = ttk.Combobox(self, values=["Add Family", "Add Family Member", "View Families"])
+        action_dropdown.pack(pady=5)
+        action_dropdown.bind("<<ComboboxSelected>>", lambda e: self.perform_action(action_dropdown.get()))
+
+    def perform_action(self, action):
+        pass  # Implement as needed
+
+    def get_villages(self):
+        db = connect_db()
+        if not db:
+            return []
+        cursor = db.cursor()
+        try:
+            cursor.execute("SELECT village_name FROM villages")
+            return [row[0] for row in cursor.fetchall()]
+        except Error as e:
+            messagebox.showerror("Error", f"Failed to fetch villages: {e}")
+            return []
+        finally:
+            db.close()
+
+    def clear_window(self):
+        for widget in self.winfo_children():
+            widget.destroy()
+
+
+# Run the application
+# Run the application
+if __name__ == "__main__":
+    app = VillageDataInfoHub()
+    app.mainloop()
